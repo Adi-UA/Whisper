@@ -10,198 +10,166 @@ access), or nothing.
 
 Whisper generates a two-word phrase from a pre-seeded list, rotates it on a
 schedule (daily or weekly), and pushes it as a notification to every member of
-a group. No app install required. No accounts. No cost to run.
+a group. No app install required. No cost to run.
 
 ## Constraints
 
-- Host for $0 on OCI Always Free tier (ARM VM, 4 cores, 24 GB RAM).
-- Google OAuth login with an email allowlist (only pre-approved Gmail users).
-- Turso (hosted SQLite) as the persistent store, accessible from OCI and CI.
+- Run on any always-on machine (Windows PC, Linux server, OCI VM) for $0.
+- Google OAuth login with an admin-curated email allowlist.
+- SQLite on disk as the only database. No external DB dependency.
 - Two tech stacks: Java 21 (core service) and Rust (word generator via JNI).
 - Deployable to local Kubernetes via Helm for self-hosters.
-- Total response latency under 100ms (always-on VM, no cold start).
 - Dual delivery: ntfy.sh push (phone) + web UI (browser, post-login).
 
 ## Architecture
 
 ```
 ┌───────────────────────────────────────────────────┐
-│  OCI Always Free VM (ARM, 4 cores, 24 GB)         │
+│  Host machine (Windows/Linux/macOS/OCI VM)        │
 │                                                   │
 │  ┌──────────────┐   JNI    ┌───────────────────┐ │
 │  │ Java service  │◄───────►│ Rust word-gen lib  │ │
-│  │ (REST + cron) │         │ (libwhisper.so)    │ │
+│  │ (REST API)    │         │ (.dll/.so/.dylib)  │ │
 │  └──────┬───────┘         └───────────────────┘ │
 │         │                                         │
-│         ├── SQLite (local file on disk)            │
-│         └── ntfy.sh (push delivery)               │
+│         ├── SQLite (whisper.db on disk)            │
+│         └── ntfy.sh (push delivery, external)     │
 └───────────────────────────────────────────────────┘
 
-┌──────────────┐         ┌──────────────────────────┐
-│ Vercel        │         │ systemd timer / cron      │
-│ React setup   │         │ curl POST /api/rotate     │
-│ UI (static)   │         │ schedule: daily 08:00     │
-└──────────────┘         └──────────────────────────┘
+┌──────────────────────┐    ┌───────────────────────┐
+│ React SPA             │    │ Task Scheduler / cron  │
+│ (bundled in the JAR)  │    │ POST /api/rotate daily │
+└──────────────────────┘    └───────────────────────┘
 ```
 
-**Java service** owns: group CRUD, member management, invite links, rotation
-orchestration, notification dispatch. Exposes a REST API consumed by the React
-UI and the systemd timer / cron trigger.
+**Java service** owns: group CRUD, member management, rotation orchestration,
+notification dispatch, Google OAuth, rate limiting, Prometheus metrics. Serves
+the React SPA from embedded static resources (single JAR, no separate web
+server).
 
 **Rust word-gen library** owns: word list loading, sliding-window no-repeat
 guarantee, CSPRNG-based selection, phrase assembly. Compiled to a native shared
-library (`.so` / `.dylib` / `.dll`) and called from Java via JNI. No network
-hop, no serialization overhead.
+library and called from Java via JNI. No network hop, no serialization.
 
-**SQLite** stores groups, members, word lists, and rotation history as a local
-file on disk. No external database dependency. On OCI, the file lives on the
-VM's persistent storage and survives reboots.
+**SQLite** stores groups, members, rotation history, and the email allowlist as
+a single file on disk. HikariCP connection pool with WAL mode for concurrent
+reads.
 
-**ntfy.sh** delivers push notifications. Recipients subscribe to a private
-topic (UUID-based). Works on Android (native push), iOS (via ntfy app), and
-desktop (browser notification or curl polling). Zero cost, zero signup.
+**ntfy.sh** delivers push notifications. Each member subscribes to a private
+topic. Works on Android (native push), iOS (ntfy app), and desktop (browser
+notification). Zero cost, zero signup on the recipient side.
 
 ## Data Model
 
 ```sql
-CREATE TABLE allowed_emails (
-    email TEXT PRIMARY KEY
-);
+CREATE TABLE allowed_emails (email TEXT PRIMARY KEY);
 
 CREATE TABLE groups (
-    id          TEXT PRIMARY KEY,  -- nanoid, 12 chars
-    name        TEXT NOT NULL,
-    schedule    TEXT NOT NULL,     -- 'daily' | 'weekly'
-    timezone    TEXT NOT NULL,     -- IANA, e.g. 'America/Chicago'
-    created_by  TEXT NOT NULL,     -- Gmail of the creator
-    created_at  TEXT NOT NULL
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    pin_hash   TEXT,
+    schedule   TEXT NOT NULL DEFAULT 'daily',
+    timezone   TEXT NOT NULL DEFAULT 'America/Chicago',
+    created_at TEXT NOT NULL
 );
 
 CREATE TABLE members (
-    id          TEXT PRIMARY KEY,
-    group_id    TEXT NOT NULL REFERENCES groups(id),
-    email       TEXT NOT NULL,     -- Gmail of the member
-    name        TEXT NOT NULL,
-    ntfy_topic  TEXT NOT NULL,     -- private ntfy topic for push delivery
-    joined_at   TEXT NOT NULL
+    id        TEXT PRIMARY KEY,
+    group_id  TEXT NOT NULL REFERENCES groups(id),
+    name      TEXT NOT NULL,
+    channel   TEXT NOT NULL,     -- 'ntfy:<topic>'
+    joined_at TEXT NOT NULL
 );
 
 CREATE TABLE history (
-    group_id    TEXT NOT NULL REFERENCES groups(id),
-    phrase      TEXT NOT NULL,
-    rotated_at  TEXT NOT NULL,
+    group_id   TEXT NOT NULL REFERENCES groups(id),
+    phrase     TEXT NOT NULL,
+    rotated_at TEXT NOT NULL,
     PRIMARY KEY (group_id, rotated_at)
 );
 ```
 
 ## Rotation Flow
 
-1. A systemd timer (or cron job) fires `curl -X POST http://localhost:8080/api/rotate`
-   at the configured time (e.g., 08:00 local).
-2. Java service queries all groups whose schedule matches today.
-3. For each group: calls Rust word-gen via JNI with the group's word list ID
-   and the last N phrases (sliding window, N = list size / 2).
-4. Rust selects two words using ChaCha20-based CSPRNG seeded per group. Rejects
-   any phrase present in the sliding window. Returns the phrase.
+1. A scheduler (Task Scheduler on Windows, cron on Linux/macOS) calls
+   `POST /api/rotate` once daily.
+2. Java service queries all groups. Daily groups rotate every call. Weekly
+   groups rotate only on Mondays (evaluated in the group's timezone).
+3. For each group: calls Rust word-gen via JNI with the last 100 phrases as
+   the exclusion window.
+4. Rust selects two words using ChaCha20 CSPRNG seeded deterministically per
+   group + rotation count. Rejects any phrase in the window. Returns the phrase.
 5. Java writes the phrase to `history`, then fans out notifications: one
-   ntfy.sh POST per member's `ntfy_topic` with the phrase as the body.
-6. Members receive a push notification: "🤫 velvet falcon".
+   ntfy.sh POST per member's topic.
+6. Members receive a push notification on their phone.
 7. Members can also see the phrase by logging in to the web UI.
 
 ## Authentication
 
-Google OAuth 2.0 via Spring Security. Only Gmail addresses present in the
-`allowed_emails` table (local SQLite) or the `WHISPER_ALLOWED_EMAILS` env var
-can access the API (403 for everyone else).
+Google OAuth 2.0 via Spring Security (active when `SPRING_PROFILES_ACTIVE=oauth`).
+Only Gmail addresses in the `WHISPER_ALLOWED_EMAILS` env var (or the
+`allowed_emails` table) can access the API. Everyone else gets rejected at
+login.
 
-The admin (you) seeds emails directly in the SQLite database:
-```sql
-sqlite3 whisper.db "INSERT INTO allowed_emails (email) VALUES ('you@gmail.com');"
-sqlite3 whisper.db "INSERT INTO allowed_emails (email) VALUES ('partner@gmail.com');"
-```
-
-Or set them via env var (no DB access needed):
-```
-WHISPER_ALLOWED_EMAILS=you@gmail.com,partner@gmail.com
-```
-
-## Invite Flow
-
-1. Authenticated user hits `POST /api/groups` with name, schedule, timezone.
-2. The shareable link is `https://whisper.adi-ua.dev/join/{group_id}`.
-3. Recipient opens the link, logs in with Google (must be in allowlist),
-   enters their display name and ntfy topic. Gets added to the group.
-4. No PIN needed since Google login is the gate.
+Without the `oauth` profile, the app runs wide-open (useful for local testing).
 
 ## Notification Delivery
 
-Dual delivery:
-- **ntfy.sh push** — each member subscribes to a private topic (generated on
-  join). The phrase arrives as a push notification on their phone instantly.
-  Works on Android (native), iOS (ntfy app), desktop (browser push).
-- **Web UI** — after Google login, the dashboard shows today's phrase and
-  rotation history for all groups the user belongs to.
+Each member chooses a private ntfy topic on join (e.g., `whisper-adi-secret`).
+They subscribe to it once in the ntfy app. After that, phrases arrive as push
+notifications without any further interaction.
+
+The web UI also shows today's phrase and full history after login.
 
 ## Rust Word Generator (JNI Interface)
 
 ```rust
-// Exposed to Java via JNI
 pub fn generate_phrase(
-    word_list: &[String],
-    history: &[String],   // last N phrases to avoid
-    seed: [u8; 32],       // derived from group_id + rotation count
+    words: &[String],
+    history: &[String],
+    group_id: &str,
+    rotation: u64,
 ) -> String
 ```
 
-Selection algorithm:
-1. Split the word list into two pools (adjectives, nouns) or treat as one pool
-   and pick two distinct words.
-2. Initialize ChaCha20Rng from `seed`.
-3. Sample word A from pool. Sample word B from pool (B ≠ A).
-4. If "{A} {B}" is in `history`, resample (bounded retry, max 100).
-5. Return "{A} {B}".
+- Seed: `SHA-256(group_id || rotation_count)` → deterministic, idempotent.
+- RNG: ChaCha20Rng from seed. Picks two distinct words, checks against history.
+- Bounded retry (100 attempts) prevents infinite loops on small word lists.
 
-The seed is deterministic: `SHA-256(group_id || rotation_count)`. This means
-the same group on the same day always produces the same phrase (idempotent
-retries). But the phrase is unpredictable without knowing the group ID.
+## Observability
+
+- Spring Boot Actuator: `/actuator/health`, `/actuator/prometheus`
+- Micrometer Prometheus: JVM, HikariCP, HTTP request latency per endpoint
+- Custom counters: `whisper.rotations.total`, `whisper.notifications.sent`,
+  `whisper.notifications.failed`
+- Rate limiting: Bucket4j token bucket on `/api/rotate` (10 RPM default, 429)
 
 ## Deployment Options
 
 | Target | Method | Cost |
 |--------|--------|------|
-| Hosted demo | OCI Always Free VM + SQLite + systemd timer + ntfy.sh | $0 |
-| Self-hosted (Docker) | `docker compose up` (Java + Rust in one image) | $0 |
-| Self-hosted (K8s) | `helm install whisper ./chart` on local cluster | $0 |
-
-The OCI Always Free ARM VM (4 cores, 24 GB RAM) runs the Java service
-natively with the Rust `.so` library. Rotation is triggered by a systemd
-timer or cron (no GitHub Actions needed). SQLite is stored on disk directly
-(no Turso required). The Helm chart is provided for users who want to deploy
-on their own Kubernetes cluster.
+| Windows PC (24/7) | NSSM service + Task Scheduler | $0 |
+| Linux/macOS | systemd / cron | $0 |
+| OCI Always Free VM | cloud-init script provided | $0 |
+| Self-hosted (K8s) | `helm install whisper ./chart` | $0 |
 
 ## Milestones
 
-**M1 (Weekend 1): Core end-to-end**
-- Rust: word-gen library with tests, JNI bridge, published as `.so`/`.dylib`.
-- Java: Spring Boot service, Turso integration, `/api/groups` CRUD,
-  `/api/rotate` endpoint, ntfy.sh dispatch.
-- Working demo: create group → rotate → receive push on phone.
+**M1: Core end-to-end** ✅
+- Rust word-gen library (6 tests, JNI bridge, 431KB native lib)
+- Java Spring Boot service (HikariCP, Bucket4j, Actuator + Prometheus)
+- SQLite schema, group CRUD, rotation endpoint, ntfy dispatch
+- CI: 3-job GitHub Actions (Rust, Java, integration smoke test)
+- 15 tests total (6 Rust + 9 Java)
 
-**M2 (Weekend 2): UI + polish**
-- React setup page (create group, join group, view history).
-- Timezone-aware scheduling (store per-group, convert UTC cron to local).
-- Custom word list upload (paste or file, stored in Turso).
-- Dockerfile (multi-stage: Rust build → Java build → slim runtime image).
+**M2: UI + auth + polish** ✅
+- React dashboard (Chakra UI v2, dark mode, Vite 6, TypeScript)
+- Google OAuth with email allowlist (profile-gated)
+- Sign out, delete groups, remove members
+- Hero images in README (desktop + phone notification)
+- Full Windows + macOS + Linux setup documentation
 
-**M3 (Weekend 3): K8s + deploy**
-- Helm chart with CronJob, Deployment, ConfigMap.
-- CI: build + test + `helm template` validation + container push to GHCR.
-- Deploy hosted demo on OCI Always Free VM (ARM). Systemd service + timer.
-- Link live demo from README.
-
-## Open Questions
-
-1. Word list licensing: use Diceware (CC-BY) or build a custom themed list?
-2. iOS push: ntfy.sh works on iOS but requires the ntfy app. Acceptable?
-3. Google OAuth client credentials: store in env vars on OCI VM. Document the
-   Google Cloud Console setup steps in CONTRIBUTING.md for self-hosters.
+**M3: K8s Helm chart** (future)
+- Helm chart with CronJob, Deployment, ConfigMap
+- `helm template` validation in CI
+- Container image push to GHCR
