@@ -54,7 +54,8 @@ library (`.so` / `.dylib` / `.dll`) and called from Java via JNI. No network
 hop, no serialization overhead.
 
 **SQLite** stores groups, members, word lists, and rotation history as a local
-file on disk. No external database dependency.
+file on disk. No external database dependency. On OCI, the file lives on the
+VM's persistent storage and survives reboots.
 
 **ntfy.sh** delivers push notifications. Recipients subscribe to a private
 topic (UUID-based). Works on Android (native push), iOS (via ntfy app), and
@@ -110,15 +111,19 @@ CREATE TABLE history (
 ## Authentication
 
 Google OAuth 2.0 via Spring Security. Only Gmail addresses present in the
-`allowed_emails` table can access the API (403 for everyone else).
+`allowed_emails` table (local SQLite) or the `WHISPER_ALLOWED_EMAILS` env var
+can access the API (403 for everyone else).
 
-The admin (you) seeds emails directly in Turso:
+The admin (you) seeds emails directly in the SQLite database:
 ```sql
-INSERT INTO allowed_emails (email) VALUES ('you@gmail.com');
-INSERT INTO allowed_emails (email) VALUES ('partner@gmail.com');
+sqlite3 whisper.db "INSERT INTO allowed_emails (email) VALUES ('you@gmail.com');"
+sqlite3 whisper.db "INSERT INTO allowed_emails (email) VALUES ('partner@gmail.com');"
 ```
 
-All API endpoints except `/api/health` require a valid Google session.
+Or set them via env var (no DB access needed):
+```
+WHISPER_ALLOWED_EMAILS=you@gmail.com,partner@gmail.com
+```
 
 ## Invite Flow
 

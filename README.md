@@ -22,7 +22,7 @@ every member of a group. No app install. No accounts. No cost to run.
 
 - **Java 21** (Spring Boot, Spring Security OAuth2, virtual threads) — core service, REST API, Google login
 - **Rust** — word generator, called from Java via JNI. CSPRNG selection, no-repeat guarantee.
-- **Turso** — hosted SQLite. Groups, members, rotation history, email allowlist.
+- **SQLite** — local file database. Groups, members, rotation history, email allowlist.
 - **ntfy.sh** — free push notifications to phone, zero signup for recipients.
 - **React + TypeScript** — web UI (login, create/join groups, view today's phrase + history).
 - **Kubernetes** — Helm chart for self-hosters. Local dev via OrbStack/minikube.
