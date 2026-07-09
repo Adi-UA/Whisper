@@ -3,6 +3,8 @@ package dev.adi_ua.whisper.service;
 import dev.adi_ua.whisper.WordGen;
 import dev.adi_ua.whisper.model.Group;
 import dev.adi_ua.whisper.model.Member;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -21,9 +23,8 @@ import java.util.List;
  *   <li>Fan out push notifications to every group member via {@link NotifyService}.</li>
  * </ol>
  *
- * <p>If the native library is not on {@code java.library.path} (e.g., in CI
- * without the Rust build), the service falls back to a deterministic
- * placeholder phrase so the rest of the pipeline can be tested independently.
+ * <p>Exposes Prometheus counters: {@code whisper.rotations.total},
+ * {@code whisper.notifications.sent}, {@code whisper.notifications.failed}.
  */
 @Service
 public class RotationService {
@@ -35,17 +36,25 @@ public class RotationService {
 
     private final GroupRepository repo;
     private final NotifyService notify;
-
-    /**
-     * Whether the Rust native library loaded successfully. Determined once at
-     * startup to avoid per-request {@link UnsatisfiedLinkError} handling.
-     */
     private final boolean jniAvailable;
 
-    public RotationService(GroupRepository repo, NotifyService notify) {
+    private final Counter rotationsCounter;
+    private final Counter notificationsSentCounter;
+    private final Counter notificationsFailedCounter;
+
+    public RotationService(GroupRepository repo, NotifyService notify, MeterRegistry registry) {
         this.repo = repo;
         this.notify = notify;
         this.jniAvailable = tryLoadNativeLib();
+        this.rotationsCounter = Counter.builder("whisper.rotations.total")
+                .description("Total successful phrase rotations")
+                .register(registry);
+        this.notificationsSentCounter = Counter.builder("whisper.notifications.sent")
+                .description("Total push notifications delivered")
+                .register(registry);
+        this.notificationsFailedCounter = Counter.builder("whisper.notifications.failed")
+                .description("Total push notification delivery failures")
+                .register(registry);
         if (!jniAvailable) {
             log.warn("Rust native library (whisper_wordgen) not found on java.library.path. "
                 + "Using fallback phrase generator. Set -Djava.library.path=wordgen/target/release to enable JNI.");
@@ -111,6 +120,7 @@ public class RotationService {
 
         String phrase = generatePhrase(group.id(), rotation, history);
         repo.addHistory(group.id(), phrase);
+        rotationsCounter.increment();
         log.info("Rotated group {} → \"{}\"", group.id(), phrase);
 
         List<Member> members = repo.findMembers(group.id());
@@ -135,8 +145,10 @@ public class RotationService {
             String topic = channel.substring(5);
             try {
                 notify.send(topic, phrase);
+                notificationsSentCounter.increment();
                 log.info("Notified member {} ({}) in group {}", member.name(), topic, groupId);
             } catch (Exception e) {
+                notificationsFailedCounter.increment();
                 // Log but continue: one failed delivery should not block others.
                 log.error("Failed to notify member {} in group {}: {}", member.name(), groupId, e.getMessage());
             }
