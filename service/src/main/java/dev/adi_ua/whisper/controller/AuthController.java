@@ -2,6 +2,7 @@ package dev.adi_ua.whisper.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.logout.SecurityContextLogoutHandler;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,8 +19,14 @@ public class AuthController {
 
     @PostMapping("/api/logout")
     public Map<String, String> logout(HttpServletRequest request, HttpServletResponse response) {
+        // Clear Spring Security context
         new SecurityContextLogoutHandler().logout(
                 request, response, SecurityContextHolder.getContext().getAuthentication());
+        // Invalidate the HTTP session entirely
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            session.invalidate();
+        }
         return Map.of("status", "logged_out");
     }
 }
