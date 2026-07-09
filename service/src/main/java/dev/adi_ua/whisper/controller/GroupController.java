@@ -69,4 +69,20 @@ public class GroupController {
                 .map(phrase -> Map.of("phrase", phrase))
                 .toList();
     }
+
+    @DeleteMapping("/{id}")
+    public Map<String, String> deleteGroup(@PathVariable String id) {
+        repo.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
+        repo.deleteGroup(id);
+        return Map.of("status", "deleted");
+    }
+
+    @DeleteMapping("/{groupId}/members/{memberId}")
+    public Map<String, String> removeMember(@PathVariable String groupId, @PathVariable String memberId) {
+        repo.findById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
+        repo.removeMember(groupId, memberId);
+        return Map.of("status", "removed");
+    }
 }

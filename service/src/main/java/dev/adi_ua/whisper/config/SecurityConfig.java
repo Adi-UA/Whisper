@@ -38,6 +38,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/health").permitAll()
                 .requestMatchers("/api/rotate").permitAll()
                 .requestMatchers("/actuator/**").permitAll()
+                .requestMatchers("/api/logout").authenticated()
                 .anyRequest().authenticated()
             )
             .oauth2Login(oauth -> oauth

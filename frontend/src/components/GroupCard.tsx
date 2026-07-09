@@ -1,19 +1,21 @@
 import {
   Badge, Box, Button, Heading, HStack, Spinner,
-  Table, Tbody, Td, Text, Th, Thead, Tr, VStack, useDisclosure,
+  Table, Tbody, Td, Text, Th, Thead, Tr, VStack, useDisclosure, useToast,
 } from '@chakra-ui/react'
 import { useEffect, useState } from 'react'
-import { fetchHistory, fetchMembers, type Group, type HistoryEntry, type Member } from '../api'
+import { deleteGroup, fetchHistory, fetchMembers, removeMember, type Group, type HistoryEntry, type Member } from '../api'
 
 interface Props {
   group: Group
+  onRefresh: () => void
 }
 
-export function GroupCard({ group }: Props) {
+export function GroupCard({ group, onRefresh }: Props) {
   const { isOpen, onToggle } = useDisclosure()
   const [members, setMembers] = useState<Member[]>([])
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [loading, setLoading] = useState(false)
+  const toast = useToast()
 
   async function load() {
     if (loading) return
@@ -27,6 +29,28 @@ export function GroupCard({ group }: Props) {
       setHistory(h)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleDeleteGroup() {
+    if (!confirm(`Delete group "${group.name}"? This removes all members and history.`)) return
+    try {
+      await deleteGroup(group.id)
+      toast({ title: 'Group deleted', status: 'info', duration: 2000 })
+      onRefresh()
+    } catch {
+      toast({ title: 'Failed to delete group', status: 'error', duration: 3000 })
+    }
+  }
+
+  async function handleRemoveMember(memberId: string, memberName: string) {
+    if (!confirm(`Remove ${memberName} from this group?`)) return
+    try {
+      await removeMember(group.id, memberId)
+      toast({ title: `${memberName} removed`, status: 'info', duration: 2000 })
+      load()
+    } catch {
+      toast({ title: 'Failed to remove member', status: 'error', duration: 3000 })
     }
   }
 
@@ -44,14 +68,19 @@ export function GroupCard({ group }: Props) {
             <Badge colorScheme="gray">{group.timezone}</Badge>
           </HStack>
         </VStack>
-        {todayPhrase && (
-          <Box textAlign="right">
-            <Text fontSize="xs" color="gray.400" mb={1}>today's phrase</Text>
-            <Text fontSize="xl" fontWeight="bold" letterSpacing="wider" color="green.300">
-              {todayPhrase}
-            </Text>
-          </Box>
-        )}
+        <HStack>
+          {todayPhrase && (
+            <Box textAlign="right" mr={3}>
+              <Text fontSize="xs" color="gray.400" mb={1}>today's phrase</Text>
+              <Text fontSize="xl" fontWeight="bold" letterSpacing="wider" color="green.300">
+                {todayPhrase}
+              </Text>
+            </Box>
+          )}
+          <Button size="sm" colorScheme="red" variant="ghost" onClick={handleDeleteGroup}>
+            Delete
+          </Button>
+        </HStack>
       </HStack>
 
       <Button size="sm" mt={4} variant="ghost" onClick={onToggle} colorScheme="gray">
@@ -71,6 +100,10 @@ export function GroupCard({ group }: Props) {
                   <HStack key={m.id} bg="gray.700" p={2} borderRadius="md">
                     <Text flex={1}>{m.name}</Text>
                     <Text fontSize="xs" color="gray.400">{m.channel}</Text>
+                    <Button size="xs" colorScheme="red" variant="ghost"
+                      onClick={() => handleRemoveMember(m.id, m.name)}>
+                      ✕
+                    </Button>
                   </HStack>
                 ))}
               </VStack>

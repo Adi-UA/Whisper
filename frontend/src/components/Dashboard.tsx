@@ -2,7 +2,7 @@ import {
   Box, Button, Flex, Heading, Spinner, Text, VStack, useToast,
 } from '@chakra-ui/react'
 import { useEffect, useState } from 'react'
-import { fetchGroups, triggerRotate, type Group } from '../api'
+import { fetchGroups, triggerRotate, logout, type Group } from '../api'
 import { GroupCard } from './GroupCard'
 import { CreateGroupModal } from './CreateGroupModal'
 import { JoinGroupModal } from './JoinGroupModal'
@@ -60,6 +60,9 @@ export function Dashboard() {
           >
             Rotate now
           </Button>
+          <Button variant="outline" colorScheme="red" onClick={logout}>
+            Sign out
+          </Button>
         </Flex>
       </Flex>
 
@@ -73,7 +76,7 @@ export function Dashboard() {
       ) : (
         <VStack spacing={4} align="stretch">
           {groups.map(g => (
-            <GroupCard key={g.id} group={g} />
+            <GroupCard key={g.id} group={g} onRefresh={loadGroups} />
           ))}
         </VStack>
       )}

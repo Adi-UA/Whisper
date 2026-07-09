@@ -195,6 +195,48 @@ public class GroupRepository {
         }
     }
 
+    /**
+     * Delete a group and all its members and history.
+     *
+     * @param groupId the group ID to delete
+     */
+    public void deleteGroup(String groupId) {
+        try (Connection conn = db.getConnection()) {
+            try (PreparedStatement ps = conn.prepareStatement("DELETE FROM history WHERE group_id = ?")) {
+                ps.setString(1, groupId);
+                ps.executeUpdate();
+            }
+            try (PreparedStatement ps = conn.prepareStatement("DELETE FROM members WHERE group_id = ?")) {
+                ps.setString(1, groupId);
+                ps.executeUpdate();
+            }
+            try (PreparedStatement ps = conn.prepareStatement("DELETE FROM groups WHERE id = ?")) {
+                ps.setString(1, groupId);
+                ps.executeUpdate();
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to delete group", e);
+        }
+    }
+
+    /**
+     * Remove a single member from a group.
+     *
+     * @param groupId  the group ID
+     * @param memberId the member ID to remove
+     */
+    public void removeMember(String groupId, String memberId) {
+        try (Connection conn = db.getConnection();
+             PreparedStatement ps = conn.prepareStatement(
+                 "DELETE FROM members WHERE id = ? AND group_id = ?")) {
+            ps.setString(1, memberId);
+            ps.setString(2, groupId);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to remove member", e);
+        }
+    }
+
     private Group mapGroup(ResultSet rs) throws SQLException {
         return new Group(
             rs.getString("id"),

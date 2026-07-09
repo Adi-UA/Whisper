@@ -69,3 +69,18 @@ export async function triggerRotate(): Promise<{ rotated: number }> {
   const res = await fetch(`${BASE}/api/rotate`, { method: 'POST' });
   return handleResponse(res);
 }
+
+export async function logout(): Promise<void> {
+  await fetch(`${BASE}/api/logout`, { method: 'POST' });
+  window.location.href = '/';
+}
+
+export async function deleteGroup(groupId: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/groups/${groupId}`, { method: 'DELETE' });
+  await handleResponse(res);
+}
+
+export async function removeMember(groupId: string, memberId: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/groups/${groupId}/members/${memberId}`, { method: 'DELETE' });
+  await handleResponse(res);
+}
