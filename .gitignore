@@ -4,3 +4,5 @@ whisper.db
 whisper.db-shm
 whisper.db-wal
 .env
+/frontend/node_modules/
+/service/src/main/resources/static/
