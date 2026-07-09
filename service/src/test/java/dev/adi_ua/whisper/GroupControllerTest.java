@@ -11,11 +11,14 @@ import org.springframework.test.web.servlet.MvcResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import org.springframework.test.annotation.DirtiesContext;
+
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest(properties = "whisper.db.url=jdbc:sqlite::memory:")
 @AutoConfigureMockMvc
+@DirtiesContext
 class GroupControllerTest {
 
     @Autowired
