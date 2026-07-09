@@ -72,8 +72,7 @@ export async function triggerRotate(): Promise<{ rotated: number }> {
 
 export async function logout(): Promise<void> {
   await fetch(`${BASE}/api/logout`, { method: 'POST' });
-  // Redirect to OAuth entry point to force re-authentication
-  window.location.href = '/oauth2/authorization/google';
+  window.location.href = '/signed-out';
 }
 
 export async function deleteGroup(groupId: string): Promise<void> {
