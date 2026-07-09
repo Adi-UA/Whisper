@@ -20,9 +20,65 @@ every member of a group. No app install. No accounts. No cost to run.
 - **Kubernetes** — Helm chart for self-hosters. Local dev via OrbStack/minikube.
 - **GitHub Actions** — daily cron trigger for rotation.
 
+## Running Locally
+
+Whisper runs as a single Java process calling a native Rust library. No Docker
+or Kubernetes required.
+
+### Prerequisites
+
+- Java 21+
+- Rust toolchain (`rustup` or `mise use rust`)
+
+### Build
+
+```bash
+# Build the Rust word generator (produces a native shared library)
+cd wordgen
+cargo build --release
+cd ..
+
+# Build the Java service
+cd service
+./mvnw package -DskipTests
+cd ..
+```
+
+The Rust build produces a platform-specific library:
+
+| OS | File | Path |
+|----|------|------|
+| macOS | `libwhisper_wordgen.dylib` | `wordgen/target/release/` |
+| Linux | `libwhisper_wordgen.so` | `wordgen/target/release/` |
+| Windows | `whisper_wordgen.dll` | `wordgen\target\release\` |
+
+### Run
+
+Point Java at the native library and start the service:
+
+```bash
+java -Djava.library.path=./wordgen/target/release \
+     -jar service/target/whisper-service-0.0.1-SNAPSHOT.jar
+```
+
+On Windows (PowerShell):
+
+```powershell
+java -D"java.library.path=.\wordgen\target\release" `
+     -jar service\target\whisper-service-0.0.1-SNAPSHOT.jar
+```
+
+The service starts on `http://localhost:8080`. Trigger a rotation manually:
+
+```bash
+curl -X POST http://localhost:8080/api/rotate
+```
+
+Or schedule it daily via cron (Linux/macOS) or Task Scheduler (Windows).
+
 ## Status
 
-🚧 **In design.** See [DESIGN.md](DESIGN.md) for the full architecture and milestones.
+🚧 **In development.** See [DESIGN.md](DESIGN.md) for the full architecture and milestones.
 
 ## License
 
