@@ -37,12 +37,13 @@ every member of a group. No app install. No accounts. No cost to run.
 ## Running Locally
 
 Whisper runs as a single Java process calling a native Rust library. No Docker
-or Kubernetes required.
+or Kubernetes required. Works on macOS, Linux, and Windows.
 
 ### Prerequisites
 
-- Java 21+
-- Rust toolchain (`rustup` or `mise use rust`)
+- Java 21+ ([Corretto](https://aws.amazon.com/corretto/) or [Adoptium](https://adoptium.net/))
+- Rust toolchain ([rustup.rs](https://rustup.rs/))
+- Git
 
 ### Build
 
@@ -54,7 +55,8 @@ cd ..
 
 # Build the Java service
 cd service
-./mvnw package -DskipTests
+./mvnw package -DskipTests   # macOS/Linux
+mvnw.cmd package -DskipTests  # Windows
 cd ..
 ```
 
@@ -66,30 +68,84 @@ The Rust build produces a platform-specific library:
 | Linux | `libwhisper_wordgen.so` | `wordgen/target/release/` |
 | Windows | `whisper_wordgen.dll` | `wordgen\target\release\` |
 
-### Run
+### Configure
 
-Point Java at the native library and start the service:
+Copy `.env.example` to `.env` and fill in your values:
 
 ```bash
-java -Djava.library.path=./wordgen/target/release \
-     -jar service/target/whisper-service-0.0.1-SNAPSHOT.jar
+cp .env.example .env
 ```
 
-On Windows (PowerShell):
+```env
+GOOGLE_CLIENT_ID=your-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-secret
+SPRING_PROFILES_ACTIVE=oauth
+WHISPER_ALLOWED_EMAILS=you@gmail.com,partner@gmail.com
+```
 
+For Google OAuth setup, create credentials at
+[console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials)
+with authorized redirect URI `http://localhost:8080/login/oauth2/code/google`.
+
+Without a `.env` file, the app runs without authentication (useful for local testing).
+
+### Run
+
+**macOS / Linux:**
+```bash
+./run.sh
+```
+
+**Windows (PowerShell):**
 ```powershell
+# Load .env manually
+Get-Content .env | ForEach-Object {
+    if ($_ -match '^([^#].+?)=(.*)$') {
+        [Environment]::SetEnvironmentVariable($matches[1], $matches[2], "Process")
+    }
+}
+
 java -D"java.library.path=.\wordgen\target\release" `
      -jar service\target\whisper-service-0.0.1-SNAPSHOT.jar
 ```
 
-The service starts on `http://localhost:8080`. Trigger a rotation manually:
+The service starts on `http://localhost:8080`.
 
+### Schedule Daily Rotation
+
+The app rotates phrases when `POST /api/rotate` is called. Set up a daily trigger:
+
+**Windows (Task Scheduler):**
+1. Open Task Scheduler → Create Basic Task
+2. Name: "Whisper Rotate"
+3. Trigger: Daily, at 8:00 AM
+4. Action: Start a program
+   - Program: `curl`
+   - Arguments: `-sf -X POST http://localhost:8080/api/rotate`
+5. Finish
+
+**macOS / Linux (cron):**
 ```bash
-curl -X POST http://localhost:8080/api/rotate
+# Add to crontab (crontab -e)
+0 8 * * * curl -sf -X POST http://localhost:8080/api/rotate
 ```
 
-Or schedule it daily via cron (Linux/macOS), Task Scheduler (Windows), or a
-systemd timer (OCI VM).
+### Run as a Background Service (Windows)
+
+To keep Whisper running 24/7 on a Windows machine without a terminal window:
+
+1. Install [NSSM](https://nssm.cc/download) (Non-Sucking Service Manager)
+2. Run as admin:
+```powershell
+nssm install Whisper "C:\Program Files\Java\jdk-21\bin\java.exe" `
+    "-Djava.library.path=C:\path\to\Whisper\wordgen\target\release" `
+    "-jar" "C:\path\to\Whisper\service\target\whisper-service-0.0.1-SNAPSHOT.jar"
+nssm set Whisper AppDirectory "C:\path\to\Whisper"
+nssm set Whisper AppEnvironmentExtra "SPRING_PROFILES_ACTIVE=oauth" "GOOGLE_CLIENT_ID=..." "GOOGLE_CLIENT_SECRET=..." "WHISPER_ALLOWED_EMAILS=..."
+nssm start Whisper
+```
+
+This survives reboots and runs without a visible console window.
 
 ## Status
 
