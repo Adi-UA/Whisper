@@ -14,45 +14,45 @@ a group. No app install required. No accounts. No cost to run.
 
 ## Constraints
 
-- Host for $0 on free tiers (Fly.io, Turso, Vercel, ntfy.sh, GitHub Actions).
+- Host for $0 on OCI Always Free tier (ARM VM, 4 cores, 24 GB RAM).
 - No OAuth, no email verification. Link-based invite with optional PIN.
 - Two tech stacks: Java 21 (core service) and Rust (word generator via JNI).
 - Deployable to local Kubernetes via Helm for self-hosters.
-- Total cold-start latency under 2 seconds (Fly.io machine wake).
+- Total response latency under 100ms (always-on VM, no cold start).
 
 ## Architecture
 
 ```
 ┌───────────────────────────────────────────────────┐
-│  Fly.io (1 shared-cpu machine, 256 MB)            │
+│  OCI Always Free VM (ARM, 4 cores, 24 GB)         │
 │                                                   │
 │  ┌──────────────┐   JNI    ┌───────────────────┐ │
 │  │ Java service  │◄───────►│ Rust word-gen lib  │ │
-│  │ (REST + cron) │         │ (libwhisper.dylib) │ │
+│  │ (REST + cron) │         │ (libwhisper.so)    │ │
 │  └──────┬───────┘         └───────────────────┘ │
 │         │                                         │
-│         ├── Turso (groups, members, history)       │
+│         ├── SQLite (local file on disk)            │
 │         └── ntfy.sh (push delivery)               │
 └───────────────────────────────────────────────────┘
 
 ┌──────────────┐         ┌──────────────────────────┐
-│ Vercel        │         │ GitHub Actions (cron)     │
+│ Vercel        │         │ systemd timer / cron      │
 │ React setup   │         │ curl POST /api/rotate     │
-│ UI (static)   │         │ schedule: "0 8 * * *"    │
+│ UI (static)   │         │ schedule: daily 08:00     │
 └──────────────┘         └──────────────────────────┘
 ```
 
 **Java service** owns: group CRUD, member management, invite links, rotation
 orchestration, notification dispatch. Exposes a REST API consumed by the React
-UI and the GitHub Actions cron trigger.
+UI and the systemd timer / cron trigger.
 
 **Rust word-gen library** owns: word list loading, sliding-window no-repeat
 guarantee, CSPRNG-based selection, phrase assembly. Compiled to a native shared
-library (`.so` / `.dylib`) and called from Java via JNI. No network hop, no
-serialization overhead.
+library (`.so` / `.dylib` / `.dll`) and called from Java via JNI. No network
+hop, no serialization overhead.
 
-**Turso** stores groups, members, word lists, and rotation history in SQLite.
-Free tier: 9 GB, 500M reads/month.
+**SQLite** stores groups, members, word lists, and rotation history as a local
+file on disk. No external database dependency.
 
 **ntfy.sh** delivers push notifications. Recipients subscribe to a private
 topic (UUID-based). Works on Android (native push), iOS (via ntfy app), and
@@ -89,7 +89,8 @@ CREATE TABLE history (
 
 ## Rotation Flow
 
-1. GitHub Actions cron fires `POST /api/rotate` at 08:00 UTC daily.
+1. A systemd timer (or cron job) fires `curl -X POST http://localhost:8080/api/rotate`
+   at the configured time (e.g., 08:00 local).
 2. Java service queries all groups whose schedule matches today.
 3. For each group: calls Rust word-gen via JNI with the group's word list ID
    and the last N phrases (sliding window, N = list size / 2).
@@ -139,13 +140,15 @@ retries). But the phrase is unpredictable without knowing the group ID.
 
 | Target | Method | Cost |
 |--------|--------|------|
-| Hosted demo | Fly.io + Turso + Vercel + GitHub Actions cron | $0 |
+| Hosted demo | OCI Always Free VM + SQLite + systemd timer + ntfy.sh | $0 |
 | Self-hosted (Docker) | `docker compose up` (Java + Rust in one image) | $0 |
 | Self-hosted (K8s) | `helm install whisper ./chart` on local cluster | $0 |
 
-The Helm chart defines: a Deployment (Java + Rust sidecar or single image), a
-CronJob (rotation trigger), a ConfigMap (word lists), and a Service. Users
-provide their own Turso URL or a local SQLite volume.
+The OCI Always Free ARM VM (4 cores, 24 GB RAM) runs the Java service
+natively with the Rust `.so` library. Rotation is triggered by a systemd
+timer or cron (no GitHub Actions needed). SQLite is stored on disk directly
+(no Turso required). The Helm chart is provided for users who want to deploy
+on their own Kubernetes cluster.
 
 ## Milestones
 
@@ -161,15 +164,15 @@ provide their own Turso URL or a local SQLite volume.
 - Custom word list upload (paste or file, stored in Turso).
 - Dockerfile (multi-stage: Rust build → Java build → slim runtime image).
 
-**M3 (Weekend 3): K8s + release**
+**M3 (Weekend 3): K8s + deploy**
 - Helm chart with CronJob, Deployment, ConfigMap.
 - CI: build + test + `helm template` validation + container push to GHCR.
-- Deploy hosted demo on Fly.io. Link from README.
-- Publish: GitHub release, crates.io for the Rust lib (standalone use).
+- Deploy hosted demo on OCI Always Free VM (ARM). Systemd service + timer.
+- Link live demo from README.
 
 ## Open Questions
 
 1. Word list licensing: use Diceware (CC-BY) or build a custom themed list?
 2. iOS push: ntfy.sh works on iOS but requires the ntfy app. Acceptable?
-3. Rate limiting on `/api/rotate`: GitHub Actions cron is the only caller, but
-   the endpoint is public. Add a shared secret header or rely on idempotency?
+3. Rate limiting on `/api/rotate`: implemented via Bucket4j (10 RPM default).
+   If the API is exposed publicly on OCI, add a shared secret header check.

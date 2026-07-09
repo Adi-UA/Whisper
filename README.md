@@ -18,7 +18,7 @@ every member of a group. No app install. No accounts. No cost to run.
 - **ntfy.sh** — free push notifications, zero signup for recipients.
 - **React + TypeScript** — setup UI (create group, join, view history).
 - **Kubernetes** — Helm chart for self-hosters. Local dev via OrbStack/minikube.
-- **GitHub Actions** — daily cron trigger for rotation.
+- **OCI Always Free** — Production hosting on Oracle Cloud ARM VM ($0).
 
 ## Running Locally
 
@@ -74,7 +74,8 @@ The service starts on `http://localhost:8080`. Trigger a rotation manually:
 curl -X POST http://localhost:8080/api/rotate
 ```
 
-Or schedule it daily via cron (Linux/macOS) or Task Scheduler (Windows).
+Or schedule it daily via cron (Linux/macOS), Task Scheduler (Windows), or a
+systemd timer (OCI VM).
 
 ## Status
 
