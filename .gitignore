@@ -3,3 +3,4 @@
 whisper.db
 whisper.db-shm
 whisper.db-wal
+.env
