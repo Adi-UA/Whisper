@@ -53,21 +53,50 @@ public class RotationService {
     }
 
     /**
-     * Rotate all groups. Intended to be called by the cron trigger or the
-     * {@code /api/rotate} endpoint.
+     * Rotate all groups whose schedule matches today.
+     *
+     * <p>Called once daily by the systemd timer. Groups with {@code schedule=daily}
+     * rotate every call. Groups with {@code schedule=weekly} rotate only on Mondays
+     * (in the group's configured timezone).
      *
      * @return the number of groups rotated
      */
     public int rotateAll() {
         List<Group> groups = repo.findAll();
+        int count = 0;
         for (Group group : groups) {
+            if (!shouldRotateToday(group)) {
+                log.debug("Skipping group {} (schedule={}, not due today)", group.id(), group.schedule());
+                continue;
+            }
             try {
                 rotate(group);
+                count++;
             } catch (Exception e) {
                 log.error("Rotation failed for group {}: {}", group.id(), e.getMessage(), e);
             }
         }
-        return groups.size();
+        return count;
+    }
+
+    /**
+     * Determine whether a group should rotate on the current call.
+     * Daily groups always rotate. Weekly groups rotate on Mondays only
+     * (evaluated in the group's configured timezone).
+     */
+    private boolean shouldRotateToday(Group group) {
+        return switch (group.schedule().toLowerCase()) {
+            case "daily" -> true;
+            case "weekly" -> {
+                java.time.ZoneId zone = java.time.ZoneId.of(group.timezone());
+                java.time.DayOfWeek today = java.time.ZonedDateTime.now(zone).getDayOfWeek();
+                yield today == java.time.DayOfWeek.MONDAY;
+            }
+            default -> {
+                log.warn("Unknown schedule '{}' for group {}, skipping", group.schedule(), group.id());
+                yield false;
+            }
+        };
     }
 
     /**

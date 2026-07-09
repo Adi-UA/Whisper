@@ -1,3 +1,5 @@
 /wordgen/target/
 /service/target/
 whisper.db
+whisper.db-shm
+whisper.db-wal
