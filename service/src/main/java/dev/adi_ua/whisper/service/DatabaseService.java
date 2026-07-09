@@ -70,6 +70,11 @@ public class DatabaseService {
     private void createSchema() {
         try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
             stmt.execute("""
+                CREATE TABLE IF NOT EXISTS allowed_emails (
+                    email TEXT PRIMARY KEY
+                )
+                """);
+            stmt.execute("""
                 CREATE TABLE IF NOT EXISTS groups (
                     id         TEXT PRIMARY KEY,
                     name       TEXT NOT NULL,

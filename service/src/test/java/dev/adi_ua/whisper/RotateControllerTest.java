@@ -17,7 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = {
     "whisper.db.url=jdbc:sqlite::memory:",
     "whisper.ntfy.base-url=http://localhost:9999",
-    "whisper.rate-limit.rotate-rpm=5"   // Low limit so we can test 429 quickly
+    "whisper.rate-limit.rotate-rpm=5"
 })
 @AutoConfigureMockMvc
 @DirtiesContext

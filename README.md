@@ -10,13 +10,21 @@ every member of a group. No app install. No accounts. No cost to run.
 - Child pickup authentication (only go with someone who knows today's word)
 - Fun daily shared ritual between partners or friends
 
+## How It Works
+
+1. You add approved Gmail addresses to the allowlist.
+2. Approved users log in with Google, create or join groups.
+3. Each day (or week), a new two-word phrase is generated and pushed to every
+   group member's phone via ntfy.sh.
+4. Members can also see the current phrase by logging in to the web UI.
+
 ## Tech Stack
 
-- **Java 21** (Spring Boot, virtual threads) — core service, REST API, scheduling
+- **Java 21** (Spring Boot, Spring Security OAuth2, virtual threads) — core service, REST API, Google login
 - **Rust** — word generator, called from Java via JNI. CSPRNG selection, no-repeat guarantee.
-- **Turso** — SQLite on the edge. Groups, members, rotation history.
-- **ntfy.sh** — free push notifications, zero signup for recipients.
-- **React + TypeScript** — setup UI (create group, join, view history).
+- **Turso** — hosted SQLite. Groups, members, rotation history, email allowlist.
+- **ntfy.sh** — free push notifications to phone, zero signup for recipients.
+- **React + TypeScript** — web UI (login, create/join groups, view today's phrase + history).
 - **Kubernetes** — Helm chart for self-hosters. Local dev via OrbStack/minikube.
 - **OCI Always Free** — Production hosting on Oracle Cloud ARM VM ($0).
 

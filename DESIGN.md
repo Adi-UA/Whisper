@@ -15,10 +15,12 @@ a group. No app install required. No accounts. No cost to run.
 ## Constraints
 
 - Host for $0 on OCI Always Free tier (ARM VM, 4 cores, 24 GB RAM).
-- No OAuth, no email verification. Link-based invite with optional PIN.
+- Google OAuth login with an email allowlist (only pre-approved Gmail users).
+- Turso (hosted SQLite) as the persistent store, accessible from OCI and CI.
 - Two tech stacks: Java 21 (core service) and Rust (word generator via JNI).
 - Deployable to local Kubernetes via Helm for self-hosters.
 - Total response latency under 100ms (always-on VM, no cold start).
+- Dual delivery: ntfy.sh push (phone) + web UI (browser, post-login).
 
 ## Architecture
 
@@ -61,21 +63,25 @@ desktop (browser notification or curl polling). Zero cost, zero signup.
 ## Data Model
 
 ```sql
+CREATE TABLE allowed_emails (
+    email TEXT PRIMARY KEY
+);
+
 CREATE TABLE groups (
     id          TEXT PRIMARY KEY,  -- nanoid, 12 chars
     name        TEXT NOT NULL,
-    pin_hash    TEXT,              -- bcrypt, nullable (optional PIN)
     schedule    TEXT NOT NULL,     -- 'daily' | 'weekly'
     timezone    TEXT NOT NULL,     -- IANA, e.g. 'America/Chicago'
-    word_list   TEXT NOT NULL,     -- 'default' | 'nato' | custom ID
+    created_by  TEXT NOT NULL,     -- Gmail of the creator
     created_at  TEXT NOT NULL
 );
 
 CREATE TABLE members (
     id          TEXT PRIMARY KEY,
     group_id    TEXT NOT NULL REFERENCES groups(id),
+    email       TEXT NOT NULL,     -- Gmail of the member
     name        TEXT NOT NULL,
-    channel     TEXT NOT NULL,     -- 'ntfy:<topic>' | 'email:<addr>'
+    ntfy_topic  TEXT NOT NULL,     -- private ntfy topic for push delivery
     joined_at   TEXT NOT NULL
 );
 
@@ -97,21 +103,39 @@ CREATE TABLE history (
 4. Rust selects two words using ChaCha20-based CSPRNG seeded per group. Rejects
    any phrase present in the sliding window. Returns the phrase.
 5. Java writes the phrase to `history`, then fans out notifications: one
-   ntfy.sh POST per member with the phrase as the body.
+   ntfy.sh POST per member's `ntfy_topic` with the phrase as the body.
 6. Members receive a push notification: "🤫 velvet falcon".
+7. Members can also see the phrase by logging in to the web UI.
+
+## Authentication
+
+Google OAuth 2.0 via Spring Security. Only Gmail addresses present in the
+`allowed_emails` table can access the API (403 for everyone else).
+
+The admin (you) seeds emails directly in Turso:
+```sql
+INSERT INTO allowed_emails (email) VALUES ('you@gmail.com');
+INSERT INTO allowed_emails (email) VALUES ('partner@gmail.com');
+```
+
+All API endpoints except `/api/health` require a valid Google session.
 
 ## Invite Flow
 
-1. Creator hits `POST /api/groups` with name, schedule, timezone, and optional
-   PIN. Gets back a group ID.
+1. Authenticated user hits `POST /api/groups` with name, schedule, timezone.
 2. The shareable link is `https://whisper.adi-ua.dev/join/{group_id}`.
-3. Recipient opens the link, sees the group name, enters their display name and
-   ntfy topic (or picks one auto-generated). If PIN is set, they enter it.
-4. `POST /api/groups/{id}/members` validates the PIN (if set), stores the
-   member, and subscribes them to the next rotation.
+3. Recipient opens the link, logs in with Google (must be in allowlist),
+   enters their display name and ntfy topic. Gets added to the group.
+4. No PIN needed since Google login is the gate.
 
-No accounts. No passwords. The link slug is the credential. Optional PIN adds a
-second factor for sharing over insecure channels.
+## Notification Delivery
+
+Dual delivery:
+- **ntfy.sh push** — each member subscribes to a private topic (generated on
+  join). The phrase arrives as a push notification on their phone instantly.
+  Works on Android (native), iOS (ntfy app), desktop (browser push).
+- **Web UI** — after Google login, the dashboard shows today's phrase and
+  rotation history for all groups the user belongs to.
 
 ## Rust Word Generator (JNI Interface)
 
@@ -174,5 +198,5 @@ on their own Kubernetes cluster.
 
 1. Word list licensing: use Diceware (CC-BY) or build a custom themed list?
 2. iOS push: ntfy.sh works on iOS but requires the ntfy app. Acceptable?
-3. Rate limiting on `/api/rotate`: implemented via Bucket4j (10 RPM default).
-   If the API is exposed publicly on OCI, add a shared secret header check.
+3. Google OAuth client credentials: store in env vars on OCI VM. Document the
+   Google Cloud Console setup steps in CONTRIBUTING.md for self-hosters.
