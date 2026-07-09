@@ -1,5 +1,5 @@
 import {
-  Box, Button, Flex, Heading, Spinner, Text, VStack, useToast,
+  Box, Button, Flex, Heading, HStack, Spinner, Text, VStack, useToast,
 } from '@chakra-ui/react'
 import { useEffect, useState } from 'react'
 import { fetchGroups, triggerRotate, logout, type Group } from '../api'
@@ -20,7 +20,7 @@ export function Dashboard() {
     try {
       setGroups(await fetchGroups())
     } catch {
-      // fetchGroups redirects to OAuth on 401, so errors here are real failures
+      // fetchGroups redirects to OAuth on 401
     } finally {
       setLoading(false)
     }
@@ -46,40 +46,66 @@ export function Dashboard() {
   useEffect(() => { loadGroups() }, [])
 
   return (
-    <Box minH="100vh" bg="gray.900" color="white" p={8}>
-      <Flex justify="space-between" align="center" mb={8}>
-        <Heading size="xl">🤫 Whisper</Heading>
-        <Flex gap={3}>
-          <Button colorScheme="blue" onClick={() => setJoinOpen(true)}>Join group</Button>
-          <Button colorScheme="green" onClick={() => setCreateOpen(true)}>New group</Button>
-          <Button
-            colorScheme="purple"
-            onClick={handleRotate}
-            isLoading={rotating}
-            loadingText="Rotating…"
-          >
-            Rotate now
-          </Button>
-          <Button variant="outline" colorScheme="red" onClick={logout}>
-            Sign out
-          </Button>
+    <Box minH="100vh" bg="gray.900" color="white">
+      {/* Header */}
+      <Box bg="gray.800" borderBottom="1px solid" borderColor="gray.700" px={8} py={4}>
+        <Flex justify="space-between" align="center" maxW="1000px" mx="auto">
+          <HStack spacing={3}>
+            <Text fontSize="2xl">🤫</Text>
+            <Heading size="lg" fontWeight="bold">Whisper</Heading>
+          </HStack>
+          <HStack spacing={3}>
+            <Button size="sm" colorScheme="blue" onClick={() => setJoinOpen(true)}>
+              Join group
+            </Button>
+            <Button size="sm" colorScheme="green" onClick={() => setCreateOpen(true)}>
+              New group
+            </Button>
+            <Button
+              size="sm"
+              colorScheme="purple"
+              onClick={handleRotate}
+              isLoading={rotating}
+              loadingText="…"
+            >
+              Rotate now
+            </Button>
+            <Button size="sm" variant="ghost" color="gray.400" onClick={logout}>
+              Sign out
+            </Button>
+          </HStack>
         </Flex>
-      </Flex>
+      </Box>
 
-      {loading ? (
-        <Flex justify="center" mt={20}><Spinner size="xl" /></Flex>
-      ) : groups.length === 0 ? (
-        <VStack mt={20} spacing={3} opacity={0.6}>
-          <Text fontSize="2xl">No groups yet</Text>
-          <Text>Create a group or ask someone to share their join link.</Text>
-        </VStack>
-      ) : (
-        <VStack spacing={4} align="stretch">
-          {groups.map(g => (
-            <GroupCard key={g.id} group={g} onRefresh={loadGroups} />
-          ))}
-        </VStack>
-      )}
+      {/* Content */}
+      <Box maxW="1000px" mx="auto" p={8}>
+        {loading ? (
+          <Flex justify="center" mt={20}><Spinner size="xl" color="blue.300" /></Flex>
+        ) : groups.length === 0 ? (
+          <VStack mt={16} spacing={6} textAlign="center">
+            <Text fontSize="6xl">🤫</Text>
+            <Heading size="lg" color="gray.200">No groups yet</Heading>
+            <Text color="gray.400" maxW="400px" lineHeight="tall">
+              Create a group with your partner, family, or friends. Everyone gets
+              the same secret phrase pushed to their phone daily.
+            </Text>
+            <HStack spacing={3} mt={2}>
+              <Button colorScheme="green" size="lg" onClick={() => setCreateOpen(true)}>
+                Create your first group
+              </Button>
+              <Button colorScheme="blue" variant="outline" size="lg" onClick={() => setJoinOpen(true)}>
+                Join a group
+              </Button>
+            </HStack>
+          </VStack>
+        ) : (
+          <VStack spacing={4} align="stretch">
+            {groups.map(g => (
+              <GroupCard key={g.id} group={g} onRefresh={loadGroups} />
+            ))}
+          </VStack>
+        )}
+      </Box>
 
       <CreateGroupModal
         isOpen={createOpen}
