@@ -68,13 +68,20 @@ jobs:
           cd service
           java -Djava.library.path=../wordgen/target/release \
                -jar target/whisper-service-0.0.1-SNAPSHOT.jar &
-          sleep 3
+          # Wait for the server to become ready (up to 30 seconds)
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/api/health > /dev/null 2>&1; then
+              echo "Server ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
           # Create group
           GROUP_ID=$(curl -sf -X POST http://localhost:8080/api/groups \
             -H "Content-Type: application/json" \
             -d '{"name":"ci-test"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
           echo "Created group: $GROUP_ID"
-          # Add a member (ntfy topic will fail silently since ntfy.sh is external)
+          # Add a member (ntfy topic is unsubscribed, notification goes nowhere)
           curl -sf -X POST "http://localhost:8080/api/groups/$GROUP_ID/members" \
             -H "Content-Type: application/json" \
             -d '{"name":"CI Bot","channel":"ntfy:ci-test-topic"}'
