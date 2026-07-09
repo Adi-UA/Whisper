@@ -4,6 +4,12 @@ A shared daily safe-word for your people. Whisper generates a two-word phrase,
 rotates it on a schedule (daily or weekly), and pushes it as a notification to
 every member of a group. No app install. No accounts. No cost to run.
 
+<p align="center">
+  <img src="assets/desktop.png" alt="Whisper web dashboard showing today's phrase" width="600" />
+  <br/>
+  <img src="assets/phone.png" alt="Push notification with today's phrase on Android" width="280" />
+</p>
+
 ## Use Cases
 
 - Couple/family verification ("prove it's you on the phone")
