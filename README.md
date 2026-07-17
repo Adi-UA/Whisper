@@ -1,5 +1,7 @@
 # Whisper
 
+[![CI](https://github.com/Adi-UA/Whisper/actions/workflows/ci.yml/badge.svg)](https://github.com/Adi-UA/Whisper/actions/workflows/ci.yml)
+
 A shared daily safe-word for your people. Whisper generates a two-word phrase,
 rotates it on a schedule (daily or weekly), and pushes it as a notification to
 every member of a group. No app install. No accounts. No cost to run.
@@ -146,10 +148,6 @@ nssm start Whisper
 ```
 
 This survives reboots and runs without a visible console window.
-
-## Status
-
-✅ **Complete.** All three milestones shipped. See [DESIGN.md](DESIGN.md) for architecture details.
 
 ## License
 
