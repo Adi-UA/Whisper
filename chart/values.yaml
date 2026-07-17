@@ -1,0 +1,40 @@
+# Whisper Helm chart values
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/adi-ua/whisper
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  host: whisper.example.com
+  tls: false
+
+oauth:
+  clientId: ""
+  clientSecret: ""
+  allowedEmails: ""
+
+rotation:
+  # Cron schedule for daily rotation (default: 8am UTC)
+  schedule: "0 8 * * *"
+
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: ""
+
+resources:
+  requests:
+    memory: 128Mi
+    cpu: 100m
+  limits:
+    memory: 512Mi
+    cpu: 500m

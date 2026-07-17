@@ -94,3 +94,21 @@ jobs:
           echo "History: $HISTORY"
           echo "$HISTORY" | python3 -c "import sys,json; h=json.load(sys.stdin); assert len(h)==1 and ' ' in h[0]['phrase']"
           echo "✅ Integration test passed"
+
+  helm:
+    name: Helm chart validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Lint chart
+        run: helm lint chart/
+      - name: Template with test values
+        run: |
+          helm template whisper chart/ \
+            --set oauth.clientId=test-id \
+            --set oauth.clientSecret=test-secret \
+            --set oauth.allowedEmails=test@gmail.com \
+            > /tmp/rendered.yaml
+          echo "✅ Helm template rendered successfully"
+          cat /tmp/rendered.yaml | grep "kind:" | sort | uniq -c

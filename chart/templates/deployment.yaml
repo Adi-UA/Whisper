@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "whisper.fullname" . }}
+  labels:
+    {{- include "whisper.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "whisper.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "whisper.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: whisper
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "oauth"
+            - name: WHISPER_DB_URL
+              value: "jdbc:sqlite:/app/data/whisper.db"
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "whisper.fullname" . }}
+                  key: GOOGLE_CLIENT_ID
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "whisper.fullname" . }}
+                  key: GOOGLE_CLIENT_SECRET
+            - name: WHISPER_ALLOWED_EMAILS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "whisper.fullname" . }}
+                  key: WHISPER_ALLOWED_EMAILS
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "whisper.fullname" . }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

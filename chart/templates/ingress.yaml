@@ -1,0 +1,33 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "whisper.fullname" . }}
+  labels:
+    {{- include "whisper.labels" . | nindent 4 }}
+  {{- if .Values.ingress.className }}
+  annotations:
+    kubernetes.io/ingress.class: {{ .Values.ingress.className }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host }}
+      secretName: {{ include "whisper.fullname" . }}-tls
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "whisper.fullname" . }}
+                port:
+                  number: {{ .Values.service.port }}
+{{- end }}

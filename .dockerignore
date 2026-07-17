@@ -1,0 +1,9 @@
+.git
+wordgen/target
+service/target
+frontend/node_modules
+frontend/dist
+*.db
+*.db-wal
+*.db-shm
+.env
