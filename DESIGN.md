@@ -169,7 +169,8 @@ pub fn generate_phrase(
 - Hero images in README (desktop + phone notification)
 - Full Windows + macOS + Linux setup documentation
 
-**M3: K8s Helm chart** (future)
-- Helm chart with CronJob, Deployment, ConfigMap
-- `helm template` validation in CI
-- Container image push to GHCR
+**M3: Dockerfile + Helm chart** ✅
+- 4-stage Dockerfile (Rust → Java → frontend → alpine JRE runtime)
+- Helm chart: Deployment, Service, CronJob, Secret, PVC, Ingress
+- CI: helm lint + template validation job
+- Deploy with `helm install whisper ./chart --set oauth.clientId=...`

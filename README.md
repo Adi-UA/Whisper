@@ -149,7 +149,7 @@ This survives reboots and runs without a visible console window.
 
 ## Status
 
-🚧 **In development.** See [DESIGN.md](DESIGN.md) for the full architecture and milestones.
+✅ **Complete.** All three milestones shipped. See [DESIGN.md](DESIGN.md) for architecture details.
 
 ## License
 
